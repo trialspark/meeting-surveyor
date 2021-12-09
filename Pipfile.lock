@@ -1,0 +1,60 @@
+{
+    "_meta": {
+        "hash": {
+            "sha256": "9ee6534394098681f2c2e3d46e2f6b9276057ef314d2b13c728dc24be165d83b"
+        },
+        "pipfile-spec": 6,
+        "requires": {
+            "python_version": "3.8"
+        },
+        "sources": [
+            {
+                "name": "pypi",
+                "url": "https://pypi.org/simple",
+                "verify_ssl": true
+            }
+        ]
+    },
+    "default": {
+        "appier": {
+            "hashes": [
+                "sha256:771a70e7767865dc1ffa1c69195707f014a1f682e9c77cdee2e8e0bac1229048",
+                "sha256:b2427532e604b6156aa5369a7298db5c7173e86b8b4d8489e96e534963bd86d6"
+            ],
+            "version": "==1.25.1"
+        },
+        "python-dotenv": {
+            "hashes": [
+                "sha256:32b2bdc1873fd3a3c346da1c6db83d0053c3c62f28f1f38516070c4c8971b1d3",
+                "sha256:a5de49a31e953b45ff2d2fd434bbc2670e8db5273606c1e737cc6b93eff3655f"
+            ],
+            "index": "pypi",
+            "version": "==0.19.2"
+        },
+        "slack-api": {
+            "hashes": [
+                "sha256:3c567696af643c98babf6dad9dba374233d62550e45c8883da69e233b0d8608a",
+                "sha256:3f3f8e4c2f2be3593a8f561a0f001ddf5c51ad1187d9d8273f966f2d5c1adc4f"
+            ],
+            "index": "pypi",
+            "version": "==0.1.4"
+        },
+        "slack-bolt": {
+            "hashes": [
+                "sha256:747eb6452c5bfcea0a2cf0a3198d3f9397abc0b8c7d57eed63aee324bcbd52a3",
+                "sha256:e7a8444c0829e2320a16ca8c47782448a01455372488dd508ee0fb72bcac8141"
+            ],
+            "index": "pypi",
+            "version": "==1.10.0"
+        },
+        "slack-sdk": {
+            "hashes": [
+                "sha256:a384d91c10229f94a9b2cae2ec5af2a683a3d5aee1287c01238630ab42747287",
+                "sha256:f779ff3dc266491b02ad056d28038ec5d708b2a438a3a8f8794fb1121d8274e2"
+            ],
+            "index": "pypi",
+            "version": "==3.12.0"
+        }
+    },
+    "develop": {}
+}
