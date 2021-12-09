@@ -1,7 +1,8 @@
 import os
 
+import sqlalchemy.orm
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy import create_engine
 from sqlalchemy_utils import create_database, database_exists
 from sqlalchemy.orm import sessionmaker
@@ -13,8 +14,11 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     slack_id = Column(String, nullable=False)
     email_address = Column(String, nullable=False)
-    has_opted_out = Column(Boolean, nullable=False)
-    oauth_token = Column(String)
+    has_opted_out = Column(Boolean, default=False, nullable=False)
+    oauth_token = Column(String, nullable=True)
+
+    UniqueConstraint(email_address)
+    UniqueConstraint(slack_id)
 
 
 class Survey(Base):
@@ -33,9 +37,10 @@ class Event(Base):
     id = Column(Integer, primary_key=True)
     google_event_id = Column(String, nullable=False)
     organizer_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    should_send_survey = Column(Boolean)
+    survey_sent = Column(Boolean)
 
-
-def get_session():
+def get_session() -> sqlalchemy.orm.Session:
     engine = create_engine("sqlite:///db/meeting_surveyor.db")
     if not database_exists(engine.url):
         create_database(engine.url)
@@ -47,3 +52,4 @@ if __name__ == '__main__':
     if os.getcwd().endswith(os.sep + 'db'):
         os.chdir('..')
     get_session()
+

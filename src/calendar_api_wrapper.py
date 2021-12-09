@@ -10,7 +10,6 @@ class CalendarAPIWrapper():
 
     def get_event_attributes(self, event_id: str) -> Dict:
         """
-        Wraps Google's
         :param event_id:
         :return: Dict of event attributes
         """
