@@ -3,6 +3,7 @@ import os
 from typing import Any
 from src.calendar_api_wrapper import CalendarAPIWrapper
 from db.database import get_session, User, Survey, Event
+from sqlalchemy import update
 import logging
 
 # Minimum number of non-organizer trialspark employees in a meeting for a survey to be sent.
@@ -39,27 +40,35 @@ class MeetingSurveyor(object):
         event_details = self.calendar.get_event_attributes(event_id)
 
         organizer_email = event_details['organizer']['email']
-        attendee_emails = [a['email'].lower() for a in event_details if a['email'] != organizer_email]
+        attendee_emails = [a['email'].lower() for a in event_details['attendees'] if a['email'] != organizer_email]
         surveyable_attendees = self.session.query(User).filter(
             User.email_address.in_(attendee_emails)
         ).all()
 
         if len(surveyable_attendees) < MIN_SURVEYABLE:
-            Event.update().where(Event.id == event_id).values(should_send_survey=False)
+            update(Event).where(Event.id == event_id).values(should_send_survey=False)
             return
+
+        survey_message = f"How useful/productive was the meeting \"{event_details['summary']}\"? " \
+                         f"Response with a 1-5 below!"
 
         for attendee in surveyable_attendees:
             if attendee.has_opted_out:
                 continue
 
-            if attendee.oauth_token:
-                # TODO: Send survey
-                pass
-            else:
-                # TODO: Send survey with link to oauth to opt-in to surveys on future attended emails.
-                pass
+            message = survey_message
 
-        Event.update().where(Event.id == event_id).values(survey_sent=True)
+            if not attendee.oauth_token:
+                oauth_link = ""  # TODO
+                message += f"\n\n(By the way, if you want to include these surveys on all future meetings just sign up"\
+                           f"here, or reply OPT OUT to opt out of future messages: {oauth_link})"
+
+            self.client.chat_postMessage(
+                channel=attendee.slack_id,
+                text=survey_message
+            )
+
+        update(Event).where(Event.id == event_id).values(survey_sent=True)
 
     def send_oauth_message(self, email: str, event_name: str):
         """ Send the introductory message with Oauth, and add an entry for this user to the DB """
@@ -72,13 +81,28 @@ class MeetingSurveyor(object):
         """
         raise NotImplementedError()
 
-    def opt_out(self, user_slack_id: str):
+    def opt_out(self, slack_id: str):
         """ Set the user's opted-out state to True"""
-        raise NotImplementedError()
+        user = self.session.query(User).filter_by(slack_id=slack_id).first()
+        user.has_opted_out = True
+        self.session.commit()
+        self.client.chat_postMessage(
+            channel=user.slack_id,
+            text="You've successfully opted out of meeting surveys. If you every want to receive them again in the "
+                    "future, just say OPT IN!"
+        )
 
-    def opt_in(self, user_slack_id: str):
+    def opt_in(self, slack_id: str):
         """ If a user opts back into the messages set their opted-out state to False """
-        raise NotImplementedError()
+        """ Set the user's opted-out state to True"""
+        user = self.session.query(User).filter_by(slack_id=slack_id).first()
+        user.has_opted_out = False
+        self.session.commit()
+        self.client.chat_postMessage(
+            channel=user.slack_id,
+            text="You've successfully opted back into meeting surveys! If you every want to stop getting them in the "
+                 "future, just say OPT OUT."
+        )
 
     def update_slack_users(self):
         """
