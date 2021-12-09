@@ -62,6 +62,7 @@ MarkupSafe = "==2.0.1"
 PyYAML = "==6.0"
 SQLAlchemy = "==1.4.27"
 Werkzeug = "==2.0.2"
+sqlalchemy-utils = "*"
 
 [dev-packages]
 

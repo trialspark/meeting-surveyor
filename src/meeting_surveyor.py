@@ -1,9 +1,8 @@
 from slack_sdk import WebClient
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
 import os
 from typing import Any
 from src.calendar_api_wrapper import CalendarAPIWrapper
+from db.database import get_session
 
 
 class MeetingSurveyor(object):
@@ -13,8 +12,7 @@ class MeetingSurveyor(object):
 
     def __init__(self):
         # Client used in sending messages.
-        engine = create_engine('sqlite:///db/meeting_surveyor.db')
-        self.session = sessionmaker(bind=engine)()
+        self.session = get_session()
         self.client = WebClient(token=os.environ["SLACK_OAUTH_TOKEN"])
         self.calendar = CalendarAPIWrapper()
 
