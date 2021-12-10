@@ -90,15 +90,6 @@ class CalendarAPIWrapper(object):
         self.session.commit()
         logging.info(f"{len(new_events)} events added!")
 
-    def _get_user(self, user_id: Optional[int] = None, email_address: Optional[str] = None):
-        if not user_id and not email_address:
-            raise ValueError()
-
-        if user_id:
-            return self.session.query(User).filter_by(id=user_id).one()
-        else:
-            return self.session.query(User).filter_by(email_address=email_address).one()
-
 
 if __name__ == '__main__':
     cal = CalendarAPIWrapper()

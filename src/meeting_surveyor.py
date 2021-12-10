@@ -4,8 +4,9 @@ import os
 import logging
 from typing import Any
 from src.calendar_api_wrapper import CalendarAPIWrapper
-from db.database import get_session, User, Survey, Event
+from db.database import get_session, User, SurveyResponses, Event
 from sqlalchemy import update
+from src.helpers import get_user
 
 # Minimum number of non-organizer trialspark employees in a meeting for a survey to be sent.
 MIN_SURVEYABLE = 3
@@ -60,7 +61,7 @@ class MeetingSurveyor(object):
             message = survey_message
 
             if not attendee.oauth_token:
-                oauth_link = ""  # TODO
+                oauth_link = os.environ['HOST'] + '/auth'
                 message += f"\n\n(By the way, if you want to include these surveys on all future meetings just sign up" \
                            f"here, or reply OPT OUT to opt out of future messages: {oauth_link})"
 
@@ -146,3 +147,22 @@ class MeetingSurveyor(object):
             raise Exception("Attempted to update user who does not exist in the table. All users with slack accounts"
                             " are expected to exist in periodically updated table, this is an unforeseen state.")
 
+
+    def send_greeting(self, user: User) -> None:
+        """ Send a greeting to a user with a link to sign-up. """
+        oauth_link = os.environ['HOST'] + '/auth'
+        message = "**Hello!** I send out surveys about meeting value. You'll get a link if you or anyone in your" \
+                  "meeting has opted-in to these surveys.\n\n"
+        message += f"If you want to include these surveys on all your future meetings just sign up here, or " \
+                   f"reply OPT OUT to opt out of future messages: {oauth_link}"
+        self.client.chat_postMessage(
+            channel=user.slack_id,
+            text=message
+        )
+
+
+if __name__ == '__main__':
+    ms = MeetingSurveyor()
+    session = ms.session
+    user = get_user(session, email_address='jklingelhofer@trialspark.com')
+    ms.send_greeting(user)

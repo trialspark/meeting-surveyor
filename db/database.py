@@ -12,22 +12,25 @@ Base = declarative_base()
 
 class User(Base):
     __tablename__ = 'users'
+
     id = Column(Integer, primary_key=True)
     slack_id = Column(String, nullable=False)
     email_address = Column(String, nullable=False)
     has_opted_out = Column(Boolean, default=False, nullable=False)
     refresh_token = Column(String, nullable=True)
+    awaiting_response_on = Column(Integer, ForeignKey('events.id'), nullable=True)
 
     UniqueConstraint(email_address)
     UniqueConstraint(slack_id)
 
 
-class Survey(Base):
-    __tablename__ = 'surveys'
+class SurveyResponses(Base):
+    __tablename__ = 'survey_responses'
 
     id = Column(Integer, primary_key=True)
     event_id = Column(Integer, ForeignKey('events.id'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    response = Column(String, nullable=False)
 
 
 class Event(Base):
@@ -42,6 +45,7 @@ class Event(Base):
     end_datetime = Column(DateTime(timezone=False))
     should_send_survey = Column(Boolean)
     survey_sent = Column(Boolean, default=False)
+
 
 def get_session() -> sqlalchemy.orm.Session:
     engine = create_engine("sqlite:///db/meeting_surveyor.db")
