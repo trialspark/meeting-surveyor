@@ -1,10 +1,11 @@
 from slack_sdk import WebClient
+import datetime
 import os
+import logging
 from typing import Any
 from src.calendar_api_wrapper import CalendarAPIWrapper
 from db.database import get_session, User, Survey, Event
 from sqlalchemy import update
-import logging
 
 # Minimum number of non-organizer trialspark employees in a meeting for a survey to be sent.
 MIN_SURVEYABLE = 3
@@ -60,7 +61,7 @@ class MeetingSurveyor(object):
 
             if not attendee.oauth_token:
                 oauth_link = ""  # TODO
-                message += f"\n\n(By the way, if you want to include these surveys on all future meetings just sign up"\
+                message += f"\n\n(By the way, if you want to include these surveys on all future meetings just sign up" \
                            f"here, or reply OPT OUT to opt out of future messages: {oauth_link})"
 
             self.client.chat_postMessage(
@@ -89,7 +90,7 @@ class MeetingSurveyor(object):
         self.client.chat_postMessage(
             channel=user.slack_id,
             text="You've successfully opted out of meeting surveys. If you every want to receive them again in the "
-                    "future, just say OPT IN!"
+                 "future, just say OPT IN!"
         )
 
     def opt_in(self, slack_id: str):
@@ -131,4 +132,17 @@ class MeetingSurveyor(object):
 
         self.session.bulk_save_objects(new_users)
         self.session.commit()
+
+        logging.info(f"{len(new_users)} new slack users added to users table!")
+
+    def update_user(self, user_info: dict, tokens: dict):
+        user = self.session.query(User).where(User.email_address == user_info['email']).one_or_none()
+
+        if user:
+            if tokens.get('refresh_token'):
+                user.refresh_token = tokens['refresh_token']
+            self.session.commit()
+        else:
+            raise Exception("Attempted to update user who does not exist in the table. All users with slack accounts"
+                            " are expected to exist in periodically updated table, this is an unforeseen state.")
 

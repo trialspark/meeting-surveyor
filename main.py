@@ -1,4 +1,5 @@
-from flask import Flask, Response
+from authlib.integrations.flask_client import OAuth
+from flask import Flask, Response, url_for, session
 from slackeventsapi import SlackEventAdapter
 import os
 from src.meeting_surveyor import MeetingSurveyor
@@ -7,9 +8,27 @@ import json
 
 
 app = Flask(__name__)
+app.secret_key = os.getenv("APP_SECRET_KEY")
 SLACK_SIGNING_SECRET = os.environ["SLACK_SIGNING_SECRET"]
 meeting_surveyor = MeetingSurveyor()
 
+# oAuth Setup
+oauth = OAuth(app)
+google = oauth.register(
+    name='google',
+    client_id=os.getenv("GOOGLE_CLIENT_ID"),
+    client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+    access_token_url='https://accounts.google.com/o/oauth2/token',
+    access_token_params=None,
+    authorize_url='https://accounts.google.com/o/oauth2/auth?access_type=offline',
+    authorize_params=None,
+    api_base_url='https://www.googleapis.com/oauth2/v1/',
+    client_kwargs={'scope': 'email profile https://www.googleapis.com/auth/calendar.readonly'},
+)
+scope = [
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/calendar.readonly"
+]
 
 @app.route("/slack/events")
 def event_hook(request):
@@ -44,6 +63,21 @@ def handle_message(event_data):
 
     # TODO: Check if in thread and if so find corresponding meeting, submit rating if appropriate.
     return Response(status=200)
+
+
+@app.route('/auth/google')
+def handle_redirect():
+    tokens = oauth.google.authorize_access_token()
+    user_info = google.get('userinfo').json()
+    meeting_surveyor.update_user(user_info, tokens)
+    return 'Thank you! This page may now be closed.'
+
+
+@app.route('/auth')
+def login():
+    google = oauth.create_client('google')  # create the google oauth client
+    redirect_uri = url_for('handle_redirect', _external=True)
+    return google.authorize_redirect(redirect_uri)
 
 
 if __name__ == '__main__':

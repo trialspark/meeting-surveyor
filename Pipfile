@@ -63,6 +63,7 @@ PyYAML = "==6.0"
 SQLAlchemy = "==1.4.27"
 Werkzeug = "==2.0.2"
 sqlalchemy-utils = "*"
+authlib = "*"
 
 [dev-packages]
 
