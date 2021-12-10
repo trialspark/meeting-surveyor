@@ -30,7 +30,7 @@ class MeetingSurveyor(object):
     def send_survey_results(self, event_id):
         """ Send survey results to the owner """
         # Query db to get averages for event, sent results to user.
-        event_details = self.calendar.get_event_attributes(event_id)
+        event_details = self.calendar.get_event(event_id)
         organizer_email = event_details['organizer']['email']
         # Query users model to get organizer details and channel
         # self.client.chat_postMessage()
@@ -38,7 +38,7 @@ class MeetingSurveyor(object):
 
     def send_survey(self, event_id) -> None:
         """ Send a survey to the attendees if standards/requirements met, otherwise updating is_surveyable flag. """
-        event_details = self.calendar.get_event_attributes(event_id)
+        event_details = self.calendar.get_event(event_id)
 
         organizer_email = event_details['organizer']['email']
         attendee_emails = [a['email'].lower() for a in event_details['attendees'] if a['email'] != organizer_email]
@@ -105,7 +105,7 @@ class MeetingSurveyor(object):
                  "future, just say OPT OUT."
         )
 
-    def update_slack_users(self):
+    def populate_slack_users(self):
         """
         An method to be executed periodically, gets slack users and adds them to the table so that they may
         receive invitations to surveys.

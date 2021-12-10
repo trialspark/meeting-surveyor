@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 Base = declarative_base()
 
+
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
@@ -28,19 +29,19 @@ class Survey(Base):
     event_id = Column(Integer, ForeignKey('events.id'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
 
-    # TODO: Ratings for surveys.
-
 
 class Event(Base):
     __tablename__ = 'events'
 
     id = Column(Integer, primary_key=True)
+    name = Column(String)
     google_event_id = Column(String, nullable=False)
-    organizer_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    organizer_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    organizer_email = Column(String, nullable=False)  # Backup/debug for when we can't find organizer id
     start_datetime = Column(DateTime(timezone=False))
     end_datetime = Column(DateTime(timezone=False))
     should_send_survey = Column(Boolean)
-    survey_sent = Column(Boolean)
+    survey_sent = Column(Boolean, default=False)
 
 def get_session() -> sqlalchemy.orm.Session:
     engine = create_engine("sqlite:///db/meeting_surveyor.db")
