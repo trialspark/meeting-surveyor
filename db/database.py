@@ -2,7 +2,7 @@ import os
 
 import sqlalchemy.orm
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, DateTime, Integer, String, Boolean, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, DateTime, Integer, String, Boolean, ForeignKey, UniqueConstraint, JSON
 from sqlalchemy import create_engine
 from sqlalchemy_utils import create_database, database_exists
 from sqlalchemy.orm import sessionmaker
@@ -24,7 +24,7 @@ class User(Base):
     UniqueConstraint(slack_id)
 
 
-class SurveyResponses(Base):
+class SurveyResponse(Base):
     __tablename__ = 'survey_responses'
 
     id = Column(Integer, primary_key=True)
@@ -41,10 +41,15 @@ class Event(Base):
     google_event_id = Column(String, nullable=False)
     organizer_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     organizer_email = Column(String, nullable=False)  # Backup/debug for when we can't find organizer id
+    created_at_datetime = Column(DateTime(timezone=False))
     start_datetime = Column(DateTime(timezone=False))
     end_datetime = Column(DateTime(timezone=False))
-    should_send_survey = Column(Boolean)
-    survey_sent = Column(Boolean, default=False)
+    should_send_survey = Column(Boolean, default=True)
+    survey_questions_sent = Column(Boolean, default=False)
+    survey_results_sent = Column(Boolean, default=False)
+    description = Column(String)
+    source_user_id = Column(Integer, ForeignKey('users.id'), nullable=False)  # Who we were when we got this event info.
+    num_attendees = Column(Integer, nullable=False)  # Who we were when we got this event info.
 
 
 def get_session() -> sqlalchemy.orm.Session:

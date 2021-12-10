@@ -7,6 +7,3 @@ if os.getcwd().endswith('/db'):
 
 ms = MeetingSurveyor()
 ms.populate_slack_users()
-# Log in then run this again
-cs = CalendarAPIWrapper()
-cs.populate_events()

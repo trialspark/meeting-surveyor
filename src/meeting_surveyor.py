@@ -1,16 +1,20 @@
+from collections import Counter
 from slack_sdk import WebClient
 import datetime
 import os
 import logging
 from typing import Any
 from src.calendar_api_wrapper import CalendarAPIWrapper
-from db.database import get_session, User, SurveyResponses, Event
-from sqlalchemy import update
+from db.database import get_session, User, SurveyResponse, Event
+from sqlalchemy import update, and_
+from typing import List
 from src.helpers import get_user
 
 # Minimum number of non-organizer trialspark employees in a meeting for a survey to be sent.
-MIN_SURVEYABLE = 3
+MIN_SURVEYABLE = 1 # TODO change to 3
+DEMO = True
 
+SURVEY_RESPONSES = ['yes', 'no', 'maybe']
 
 class MeetingSurveyor(object):
     """
@@ -24,35 +28,92 @@ class MeetingSurveyor(object):
         self.calendar = CalendarAPIWrapper()
 
     # Kinds/number of ratings preserved will be determined by output of survey?
-    def handle_survey_submission(self, user_slack_id: str, event_id: str, ratings: Any):
+    def handle_survey_submission(self, slack_id: str, response: str):
         """ Store the rating(s) for a survey in the DB """
-        raise NotImplementedError()
+        response = ''.join(r for r in response if r.isalpha())
+        user = self._slack_id_to_user(slack_id)
+        if not user.awaiting_response_on:
+            self.client.chat_postMessage(
+                channel=slack_id,
+                text=f"Sorry, I'm not sure what meeting to assign this rating to."
+            )
+        event = self.calendar.get_event(user.awaiting_response_on)
+        if response not in SURVEY_RESPONSES:
+            self.client.chat_postMessage(
+                channel=slack_id,
+                text=f"Sorry, I'm only expecting responses of {', '.join(SURVEY_RESPONSES[:1])} or "
+                     f"{SURVEY_RESPONSES[-1]}"
+            )
+        existing_response = self.session.query(SurveyResponse).filter_by(
+            id=user.awaiting_response_on,
+            user_id=user.id
+        ).one_or_none()
+        if existing_response:
+            existing_response.response = response
+            self.client.chat_postMessage(
+                channel=slack_id,
+                text=f"Updated your rating for meeting {event.name}."
+            )
+        else:
+            new_response = SurveyResponse(
+                event_id=event.id,
+                user_id=user.id,
+                response=response
+            )
+            self.session.add(new_response)
+            self.client.chat_postMessage(
+                channel=slack_id,
+                text=f"Thanks! I've set your rating for meeting {event.name}."
+            )
+        self.session.commit()
+
+        event_details = self.calendar.get_event_google_details(user.awaiting_response_on)
+        num_responses = len(self.session.query(SurveyResponse).filter_by(event_id=event.id).all())
+        surveyable_attendees = self._get_surveyable_attendees(event, event_details)
+        if DEMO or num_responses == len(surveyable_attendees):
+            self.send_survey_results(event.id)
 
     def send_survey_results(self, event_id):
         """ Send survey results to the owner """
         # Query db to get averages for event, sent results to user.
-        event_details = self.calendar.get_event(event_id)
-        organizer_email = event_details['organizer']['email']
-        # Query users model to get organizer details and channel
-        # self.client.chat_postMessage()
-        raise NotImplementedError()
+        event = self.calendar.get_event(event_id)
+        if not event.organizer_id:
+            return
 
-    def send_survey(self, event_id) -> None:
-        """ Send a survey to the attendees if standards/requirements met, otherwise updating is_surveyable flag. """
-        event_details = self.calendar.get_event(event_id)
+        organizer = self.session.query(User).filter_by(id=event.organizer_id).one()
+        survey_responses = self.session.query(SurveyResponse).filter_by(event_id=event_id)
+        responses = Counter([s.response for s in survey_responses]).most_common()
+        if not responses:
+            return
 
-        organizer_email = event_details['organizer']['email']
-        attendee_emails = [a['email'].lower() for a in event_details['attendees'] if a['email'] != organizer_email]
-        surveyable_attendees = self.session.query(User).filter(
-            User.email_address.in_(attendee_emails)
-        ).all()
+        message = f'Here are the survey responses for meeting {event.name}:'
+        for response, count in responses:
+            message += f'\n - {count} attendees said "{response}"'
+
+        self.client.chat_postMessage(
+            channel=organizer.slack_id,
+            text=message
+        )
+
+        event = self.session.query(Event).filter_by(id=event_id).first()
+        event.survey_results_sent=True
+        self.session.commit()
+
+    def send_survey_question(self, event_id: int) -> None:
+        """
+        Send a survey to the attendees if standards/requirements met, otherwise updating
+        should_send_survey flag.
+        """
+        event = self.calendar.get_event(event_id)
+        event_details = self.calendar.get_event_google_details(event_id)
+        surveyable_attendees = self._get_surveyable_attendees(event, event_details)
 
         if len(surveyable_attendees) < MIN_SURVEYABLE:
             update(Event).where(Event.id == event_id).values(should_send_survey=False)
             return
 
-        survey_message = f"How useful/productive was the meeting \"{event_details['summary']}\"? " \
-                         f"Response with a 1-5 below!"
+        survey_message = f"Was the meeting \"{event_details['summary']}\" effective? " \
+                         f"Response with \"yes\", \"no\", or \"maybe\"."
 
         for attendee in surveyable_attendees:
             if attendee.has_opted_out:
@@ -60,7 +121,7 @@ class MeetingSurveyor(object):
 
             message = survey_message
 
-            if not attendee.oauth_token:
+            if not attendee.refresh_token:
                 oauth_link = os.environ['HOST'] + '/auth'
                 message += f"\n\n(By the way, if you want to include these surveys on all future meetings just sign up" \
                            f"here, or reply OPT OUT to opt out of future messages: {oauth_link})"
@@ -69,23 +130,15 @@ class MeetingSurveyor(object):
                 channel=attendee.slack_id,
                 text=survey_message
             )
+            attendee.awaiting_response_on = event_id
 
-        update(Event).where(Event.id == event_id).values(survey_sent=True)
-
-    def send_oauth_message(self, email: str, event_name: str):
-        """ Send the introductory message with Oauth, and add an entry for this user to the DB """
-        users = self.client.users_list()
-
-    def oauth_followup(self):
-        """
-        The OAuth process should include some kind of a redirect or side-effect which will then prompt the user to
-        complete the survey that they were originally meant to be completing when the oauth message was sent
-        """
-        raise NotImplementedError()
+        event = self.session.query(Event).filter_by(id=event_id).first()
+        event.survey_questions_sent = True
+        self.session.commit()
 
     def opt_out(self, slack_id: str):
         """ Set the user's opted-out state to True"""
-        user = self.session.query(User).filter_by(slack_id=slack_id).first()
+        user = self._slack_id_to_user(slack_id)
         user.has_opted_out = True
         self.session.commit()
         self.client.chat_postMessage(
@@ -97,7 +150,7 @@ class MeetingSurveyor(object):
     def opt_in(self, slack_id: str):
         """ If a user opts back into the messages set their opted-out state to False """
         """ Set the user's opted-out state to True"""
-        user = self.session.query(User).filter_by(slack_id=slack_id).first()
+        user = self._slack_id_to_user(slack_id)
         user.has_opted_out = False
         self.session.commit()
         self.client.chat_postMessage(
@@ -147,22 +200,99 @@ class MeetingSurveyor(object):
             raise Exception("Attempted to update user who does not exist in the table. All users with slack accounts"
                             " are expected to exist in periodically updated table, this is an unforeseen state.")
 
-
-    def send_greeting(self, user: User) -> None:
+    def send_greeting(self, slack_id: str) -> None:
         """ Send a greeting to a user with a link to sign-up. """
+        user = self._slack_id_to_user(slack_id)
         oauth_link = os.environ['HOST'] + '/auth'
-        message = "**Hello!** I send out surveys about meeting value. You'll get a link if you or anyone in your" \
-                  "meeting has opted-in to these surveys.\n\n"
-        message += f"If you want to include these surveys on all your future meetings just sign up here, or " \
-                   f"reply OPT OUT to opt out of future messages: {oauth_link}"
+        message = "Hello! I send out surveys about meeting value. You'll get a link if you or anyone in your " \
+                  "meeting has opted-in to these surveys. Feel free to say 'opt out' at any time to opt out "
+
+        if user and not user.refresh_token:
+            message += f"\n\nIf you want to include these surveys on all your future meetings just sign up here, " \
+                       f" {oauth_link}"
         self.client.chat_postMessage(
             channel=user.slack_id,
             text=message
         )
+        
+    def send_error(self, slack_id: str, user_message: str) -> None:
+        """ Send an error on an unhandled submission """
+        user = self._slack_id_to_user(slack_id)
+        if user:
+            self.client.chat_postMessage(
+                channel=slack_id,
+                text=f"Sorry, I don't know how to respond to \"{user_message}\"."
+            )
+
+    def send_event_notification(self, event: Event):
+        """ Send a message to the owner about their event """
+        organizer = self.session.query(User).filter_by(id=event.organizer_id).one()
+        if organizer.refresh_token and not organizer.has_opted_out:  # Only for organizers who have opted in
+
+            text = f'Some information for your upcoming meeting {event.name}:'
+
+            if not event.description:
+                words_in_description = 0
+            else:
+                zoom_break = '──────'  # Not in regular messages, before zoom section of description.
+                words_in_description = len([v for v in event.description.split(zoom_break)[0].strip().split(' ')
+                                           if v.strip().isalpha()])
+
+            if not words_in_description:
+                text += '\n - It looks like this event doesn\'t have a description, please add one!'
+            elif words_in_description < 12:
+                text += f'\n - I only see {words_in_description} words in this description, consider adding more ' \
+                        f'detail before the meeting starts!'
+
+            average_salary = 106723.00  # average for tech workers, going lower bound than NYC average to be conservative
+            cost_per_hour = event.num_attendees * (average_salary / 261 / 8)
+            meeting_length = event.end_datetime - event.start_datetime
+            meeting_cost = (meeting_length.total_seconds()/3600) * cost_per_hour
+
+            text += f'\n - With {event.num_attendees} people invited, based off market averages this meeting ' \
+                    f'costs ${round(meeting_cost, 2)}. '
+
+            self.client.chat_postMessage(
+                channel=organizer.slack_id,
+                text=text
+            )
+
+    def _slack_id_to_user(self, slack_id: str):
+        return self.session.query(User).filter_by(slack_id=slack_id).first()
+
+    def _get_surveyable_attendees(self, event: Event, event_details: dict) -> List[User]:
+        attendee_emails = [a['email'].lower() for a in event_details['attendees'] if
+                           (a['email'] == event.organizer_email if DEMO else a['email'] != event.organizer_email)
+                           and a['responseStatus'] != 'declined']
+        surveyable_attendees = self.session.query(User).filter(
+            User.email_address.in_(attendee_emails)
+        ).all()
+        return surveyable_attendees
+
+    def send_pending_questions(self):
+        pending_events = self.session.query(Event).filter(
+            and_(
+                # Event.end_datetime < datetime.datetime.utcnow(),
+                not Event.survey_questions_sent,
+                Event.should_send_survey
+            )
+        ).all()
+        for event in pending_events:
+            self.send_survey_question(event.id)
+
+    def send_pending_results(self):
+        pending_events = self.session.query(Event).filter(
+            and_(
+                Event.end_datetime < datetime.datetime.utcnow() + datetime.timedelta(0, 3600),  # one hour after over
+                Event.survey_questions_sent,
+                Event.survey_results_sent
+            )
+        ).all()
+        for event in pending_events:
+            self.send_survey_results(event.id)
 
 
 if __name__ == '__main__':
     ms = MeetingSurveyor()
-    session = ms.session
-    user = get_user(session, email_address='jklingelhofer@trialspark.com')
-    ms.send_greeting(user)
+    ms.send_survey_question(2)
+    # ms.send_survey_results(2)

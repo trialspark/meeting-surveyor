@@ -65,6 +65,7 @@ Werkzeug = "==2.0.2"
 sqlalchemy-utils = "*"
 authlib = "*"
 pytz = "*"
+schedule = "*"
 
 [dev-packages]
 

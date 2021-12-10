@@ -2,7 +2,7 @@ from authlib.integrations.flask_client import OAuth
 from flask import Flask, Response, url_for, session
 from slackeventsapi import SlackEventAdapter
 import os
-from src.meeting_surveyor import MeetingSurveyor
+from src.meeting_surveyor import MeetingSurveyor, SURVEY_RESPONSES
 
 import json
 
@@ -51,17 +51,28 @@ slack_events_adapter = SlackEventAdapter(
 
 @slack_events_adapter.on("message")
 def handle_message(event_data):
+    if not event_data.get('event', {}).get('user'):
+        return Response(status=200)
+
     text = event_data['event']['text'].lower().strip()
 
     fixed_user_commands = {
         'opt out': meeting_surveyor.opt_out,
-        'opt in': meeting_surveyor.opt_in
+        'opt in': meeting_surveyor.opt_in,
+        'hello': meeting_surveyor.send_greeting,
+        'hi': meeting_surveyor.send_greeting,
     }
 
-    if text.strip() in fixed_user_commands:
-        fixed_user_commands[text](event_data['event']['user'])
+    slack_id = event_data['event']['user']
+    cleaned_text = ''.join(c for c in text.lower().strip() if c.isalpha())
 
-    # TODO: Check if in thread and if so find corresponding meeting, submit rating if appropriate.
+    if cleaned_text in fixed_user_commands:
+        fixed_user_commands[cleaned_text](slack_id)
+    elif cleaned_text in SURVEY_RESPONSES:
+        meeting_surveyor.handle_survey_submission(slack_id, cleaned_text)
+    else:
+        meeting_surveyor.send_error(slack_id, cleaned_text)
+
     return Response(status=200)
 
 
